@@ -15,7 +15,7 @@ Spotify remains a Chromium app. The theme approximates a glass appearance; it do
 
 ## Installation from the fork release
 
-Download the assets from [performance-v1.2.0](https://github.com/alextyhwang/spicy-lyrics/releases/tag/performance-v1.2.0) into a fresh directory. Quit Spotify before applying changes. Verify the SHA-256 checksums, then copy the two JavaScript files into Spicetify's Extensions directory. Disable the original Marketplace **Spicy Lyrics** and **Beautiful Lyrics** entries first; avoid running multiple lyrics renderers simultaneously.
+Download the assets from [performance-v1.2.1](https://github.com/alextyhwang/spicy-lyrics/releases/tag/performance-v1.2.1) into a fresh directory. Quit Spotify before applying changes. Verify the SHA-256 checksums, then copy the two JavaScript files into Spicetify's Extensions directory. Disable the original Marketplace **Spicy Lyrics** and **Beautiful Lyrics** entries first; avoid running multiple lyrics renderers simultaneously.
 
 ```sh
 shasum -a 256 -c SHA256SUMS

@@ -426,7 +426,8 @@ async function main() {
     if (popupLyricsButton) {
       popupLyricsButton.element.style.order = "100000";
       popupLyricsButton.element.id = "SpicyLyrics_PopupLyricsButton";
-      popupLyricsButton.element.style.setProperty("display", "inline-block", "important");
+      // Let themes hide this optional control without adding runtime work.
+      popupLyricsButton.element.style.setProperty("display", "inline-block");
     }
     syncPopupLyricsButton();
     $popupLyricsAllowed.listen(syncPopupLyricsButton);

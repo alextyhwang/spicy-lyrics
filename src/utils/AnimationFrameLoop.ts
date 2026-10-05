@@ -352,7 +352,7 @@ Object.defineProperty(window, "_spicy_lyrics_performance", {
   configurable: true,
   value: {
     status: () => ({
-      version: "1.2.0",
+      version: "1.2.1",
       active: isActive(),
       scheduled: frame !== null,
       viewOpen: !!view?.isConnected,

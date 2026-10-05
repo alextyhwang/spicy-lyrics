@@ -112,3 +112,9 @@ button[data-testid="control-button-playpause"] { background-color: #9bc0ff !impo
   backdrop-filter: none !important;
 }
 #SpicyLyricsNPVCard.Expanded:focus-within .CardHeader { opacity: 1 !important; }
+
+/* One lyric entry point; retain room for the native volume control. */
+.Root__now-playing-bar:has(#SpicyLyrics_PageButton) button[data-testid="lyrics-button"],
+#SpicyLyrics_PopupLyricsButton {
+  display: none !important;
+}
