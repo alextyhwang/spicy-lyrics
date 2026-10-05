@@ -1,0 +1,12 @@
+import {readFileSync} from 'node:fs';
+import {fileURLToPath} from 'node:url';
+import path from 'node:path';
+import assert from 'node:assert/strict';
+const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
+const manifest=JSON.parse(readFileSync(path.join(root,'manifest.json'),'utf8'));
+assert.equal(manifest[0].main,'./builds/spicy-lyrics-performance.js');
+const bundle=readFileSync(path.join(root,manifest[0].main),'utf8');
+for(const id of ['pauseInactiveRendering','lyricsOnDemand','_spicy_lyrics_performance'])assert.ok(bundle.includes(id),`Missing performance feature: ${id}`);
+assert.ok(!/import\s*\([^)]*(?:Spikerko\/spicy-lyrics|spicy-lyrics@main)/i.test(bundle),'Upstream executable loader detected');
+assert.ok(!bundle.includes('CheckForUpdates_Intervaled'),'Recurring upstream update polling remains');
+console.log('Fork manifest selects the standalone performance bundle; feature checks passed.');

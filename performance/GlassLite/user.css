@@ -1,0 +1,114 @@
+/* Glass Lite: static macOS-inspired materials, no added animation or blur. */
+:root {
+  --glass-canvas: #15191f;
+  --glass-surface: #20252e;
+  --glass-elevated: #2b323e;
+  --glass-edge: rgba(255,255,255,.09);
+  --glass-accent: #9bc0ff;
+  --encore-body-font-stack: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+  --encore-title-font-stack: -apple-system, BlinkMacSystemFont, "SF Pro Display", system-ui, sans-serif;
+}
+body, button, input, [class*="encore-text"], [class*="Type__"] {
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif !important;
+  font-optical-sizing: auto;
+}
+.Root, .Root__top-container { background: var(--glass-canvas) !important; }
+.Root__top-container { gap: 10px !important; padding: 10px !important; }
+.Root__globalNav { background: transparent !important; padding-inline: 8px !important; }
+.Root__nav-bar, .Root__main-view, .Root__right-sidebar {
+  border-radius: 18px !important;
+  border: 1px solid var(--glass-edge);
+  background: var(--glass-surface) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.035);
+}
+.main-yourLibraryX-library, .main-yourLibraryX-libraryContainer,
+.main-nowPlayingView-nowPlayingWidget, .NowPlayingView, .main-home-homeHeader,
+.main-home-filterChipsContainer { background: transparent !important; }
+.main-home-homeHeader { background-image: none !important; }
+.main-globalNav-searchInputContainer {
+  background: linear-gradient(180deg, #303744, #252b35) !important;
+  border: 1px solid rgba(255,255,255,.13) !important;
+  border-radius: 24px !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.05) !important;
+}
+.main-globalNav-searchContainer { max-width: 510px; }
+.main-globalNav-navLink {
+  background: var(--glass-elevated) !important;
+  border: 1px solid var(--glass-edge);
+}
+.main-topBar-searchBar { font-size: 14px !important; }
+.Root__now-playing-bar {
+  margin: 0 4px 4px;
+  border-radius: 22px;
+  border: 1px solid rgba(255,255,255,.12);
+  background: linear-gradient(180deg, #2b323d, #222832) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.055), 0 4px 12px rgba(0,0,0,.12);
+}
+.main-nowPlayingBar-container { padding-inline: 14px !important; background: transparent !important; }
+.main-playPauseButton-button { background: var(--glass-accent) !important; color: #172333 !important; }
+.main-trackList-trackListRow { border-radius: 8px !important; }
+.main-yourLibraryX-listItem { border-radius: 10px !important; }
+.main-nowPlayingView-coverArtContainer img, .main-card-imageContainer { border-radius: 12px !important; }
+.main-nowPlayingView-section:not(:has(#SpicyLyricsNPVCard)) { display: none !important; }
+.main-nowPlayingView-trackInfo { padding-bottom: 12px; }
+#SpicyLyricsNPVCard {
+  background: linear-gradient(180deg, #2b323d, #262c36) !important;
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 16px !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
+}
+#SpicyLyricsNPVCard .CardHeader { padding: 12px 14px !important; }
+#SpicyLyricsNPVCard .CardTitle { font-size: 14px !important; font-weight: 600 !important; }
+#SpicyLyricsNPVCard .CardControl { border: 1px solid var(--glass-edge) !important; background: rgba(255,255,255,.035) !important; }
+#context-menu ul, .main-contextMenu-menu {
+  background: #2b313b !important;
+  border: 1px solid rgba(255,255,255,.14);
+  border-radius: 12px !important;
+  box-shadow: 0 8px 24px rgba(0,0,0,.2);
+}
+button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid var(--glass-accent) !important; outline-offset: 3px; }
+@media (prefers-contrast: more) {
+  .Root__nav-bar, .Root__main-view, .Root__right-sidebar, .Root__now-playing-bar { border-color: #8190a6; }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .main-globalNav-searchInputContainer, .Root__now-playing-bar, #SpicyLyricsNPVCard { background-image: none !important; background-color: #272d38 !important; }
+}
+
+/* Match Encore surfaces so headers, chips and menus follow the shell palette. */
+.encore-dark-theme {
+  --background-base: #20252e !important;
+  --background-highlight: #2b323e !important;
+  --background-press: #344150 !important;
+  --background-elevated-base: #2b323e !important;
+  --background-elevated-highlight: #343c49 !important;
+  --text-base: #eef1f5 !important;
+  --text-subdued: #a8afbb !important;
+  --essential-base: #eef1f5 !important;
+  --essential-subdued: #a8afbb !important;
+  --essential-bright-accent: #9bc0ff !important;
+}
+.main-home-homeHeader { background-color: #20252e !important; }
+.main-home-filterChipsContainer { background-color: #20252e !important; }
+.main-home-content { padding-top: 16px; }
+
+.main-trackInfo-artists, .main-trackInfo-artists a, .main-nowPlayingView-trackInfo a, .main-nowPlayingWidget-nowPlaying .main-trackInfo-artists a { color: #a8afbb !important; }
+
+
+button[data-testid="control-button-playpause"] { background-color: #9bc0ff !important; color: #172333 !important; }
+.main-trackList-trackListRow:hover { background-color: rgba(155,192,255,.08) !important; }
+
+/* Compact entity headers keep music lists prominent. */
+.main-entityHeader-container { min-height: 210px !important; height: auto !important; padding-block: 24px !important; }
+.main-entityHeader-imageContainer, .main-entityHeader-image { width: 152px !important; height: 152px !important; min-width: 152px !important; }
+.main-entityHeader-title h1 { font-size: clamp(28px, 3vw, 44px) !important; line-height: 1.12 !important; letter-spacing: -.02em !important; }
+.main-entityHeader-backgroundColor { background: #272e39 !important; }
+
+.playlist-playlist-actionBarBackground-background { background: #20252e !important; }
+.main-entityHeader-description, .main-entityHeader-metaDataTextSubdued { color: #a8afbb !important; }
+
+/* Static cards need no backdrop compositing; reveal controls for keyboard focus. */
+#SpicyLyricsNPVCard, #SpicyLyricsNPVCard .CardControl {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+#SpicyLyricsNPVCard.Expanded:focus-within .CardHeader { opacity: 1 !important; }

@@ -1,7 +1,6 @@
 import { useStore } from "@nanostores/react";
-import React, { useEffect, useState } from "react";
-import Session from "../../Global/Session.ts";
-import App from "../../../utils/app.ts";
+import React from "react";
+import { PerformanceForkVersion, PerformanceForkReleases } from "../../../../project/config.ts";
 import { $spicyLyricsVersion } from "../../../utils/stores.ts";
 
 interface Link {
@@ -16,22 +15,6 @@ const LINKS: Link[] = [
   { label: "Discord", url: "https://discord.com/invite/uqgXU5wh8j", brand: "88, 101, 242" },
   { label: "Ko-fi", url: "https://ko-fi.com/spikerko", brand: "255, 94, 138" },
 ];
-
-/** "checking" until the fetch lands; "unknown" if it never does. */
-type UpdateStatus = "checking" | "latest" | "outdated" | "unknown";
-
-interface Version {
-  Major: number;
-  Minor: number;
-  Patch: number;
-}
-
-/** Ordered compare — Minor only decides once Major ties, and Patch once both do. */
-function isNewer(a: Version, b: Version): boolean {
-  if (a.Major !== b.Major) return a.Major > b.Major;
-  if (a.Minor !== b.Minor) return a.Minor > b.Minor;
-  return a.Patch > b.Patch;
-}
 
 function ExternalArrow() {
   return (
@@ -57,35 +40,7 @@ function ExternalArrow() {
 
 export default function Footer() {
   const version = useStore($spicyLyricsVersion);
-  const build = App.isDev() ? "dev" : "public";
-  const [status, setStatus] = useState<UpdateStatus>("checking");
-
-  useEffect(() => {
-    let cancelled = false;
-
-    (async () => {
-      try {
-        const latest = await Session.SpicyLyrics.GetLatestVersion();
-        const current = Session.SpicyLyrics.GetCurrentVersion();
-        if (cancelled) return;
-        // Either side missing means the check didn't conclude — saying
-        // "Latest" there would be a guess dressed up as a fact.
-        if (!latest || !current) {
-          setStatus("unknown");
-          return;
-        }
-        setStatus(isNewer(latest, current) ? "outdated" : "latest");
-      } catch {
-        if (!cancelled) setStatus("unknown");
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const showStatus = status === "latest" || status === "outdated";
+  const build = `performance ${PerformanceForkVersion}`;
 
   return (
     <div className="sl-sp-footer">
@@ -111,25 +66,10 @@ export default function Footer() {
         <div className="sl-sp-footer-brand">
           <span className="sl-sp-footer-wordmark">Spicy Lyrics</span>
           <div className="sl-sp-footer-status-row">
-            {showStatus && (
-              <>
-                <span className={`sl-sp-footer-status sl-sp-footer-status--${status}`}>
-                  {status === "latest" ? "Latest" : "Outdated"}
-                </span>
-                {status === "outdated" && (
-                  <button
-                    type="button"
-                    className="sl-sp-footer-update"
-                    onClick={() => Session.Navigate({ pathname: "/SpicyLyrics/Update" })}
-                  >
-                    Update
-                  </button>
-                )}
-                <span className="sl-sp-footer-sep" aria-hidden="true">
-                  ·
-                </span>
-              </>
-            )}
+            <button type="button" className="sl-sp-footer-update" onClick={() => window.open(PerformanceForkReleases, "_blank", "noopener,noreferrer")}>
+              Fork releases
+            </button>
+            <span className="sl-sp-footer-sep" aria-hidden="true">·</span>
             <span className="sl-sp-footer-version">v{version}</span>
           </div>
         </div>

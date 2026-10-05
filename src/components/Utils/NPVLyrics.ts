@@ -21,12 +21,20 @@ import {
 } from "../../utils/stores.ts";
 import { SpotifyPlayer } from "../Global/SpotifyPlayer.ts";
 import Logger from "../../utils/Logger.ts";
+import { $experiment, isExperimentEnabled } from "../../utils/experiments.ts";
+
+import { isAnimationDocumentActive } from "../../utils/AnimationFrameLoop.ts";
 
 const cardLogger = new Logger("NPV Lyrics");
 
 type CardState = "DORMANT" | "SHELL" | "ACTIVE";
 
 let initialized = false;
+// Session-only launch override: persisted atoms remain the saved preference.
+// Enabling mid-session applies next launch; disabling releases it immediately.
+let launchCollapsed = false;
+const isCardOpen = () => !launchCollapsed && $npvLyricsOpen.get();
+const isCardExpanded = () => !launchCollapsed && $npvLyricsExpanded.get();
 let cardEl: HTMLElement | null = null;
 let cardBodyEl: HTMLElement | null = null;
 let cardOwnsPage = false;
@@ -112,7 +120,7 @@ function desiredState(): CardState {
     Spicetify.Platform.History.location.pathname === "/SpicyLyrics";
   if (pageBusyElsewhere) return "DORMANT";
   if (hiddenForMissingLyrics()) return "DORMANT";
-  return $npvLyricsOpen.get() ? "ACTIVE" : "SHELL";
+  return isCardOpen() ? "ACTIVE" : "SHELL";
 }
 
 async function teardownCard(): Promise<void> {
@@ -210,6 +218,7 @@ const STATE_ANIM_EASE = "cubic-bezier(0.22, 1, 0.36, 1)";
 function animateStateChange(mutate: () => void): Animation | null {
   if (
     !cardEl ||
+    !isAnimationDocumentActive(cardEl.ownerDocument) ||
     window.matchMedia("(prefers-reduced-motion: reduce)").matches
   ) {
     mutate();
@@ -297,6 +306,7 @@ function morphExpandedState(mutate: () => void): void {
   const card = cardEl;
   if (
     !card ||
+    !isAnimationDocumentActive(card.ownerDocument) ||
     window.matchMedia("(prefers-reduced-motion: reduce)").matches
   ) {
     mutate();
@@ -346,9 +356,9 @@ function morphExpandedState(mutate: () => void): void {
 
 function refreshCardUI(): void {
   if (!cardEl) return;
-  const open = $npvLyricsOpen.get();
+  const open = isCardOpen();
   // Defensive: never Expanded while Collapsed.
-  const expanded = open && $npvLyricsExpanded.get();
+  const expanded = open && isCardExpanded();
   cardEl.classList.toggle("Collapsed", !open);
   cardEl.classList.toggle("Expanded", expanded);
   // NPVLyrics.css hides the card's wrapper siblings off this, for when the card
@@ -419,11 +429,14 @@ function renderCardShell(npv: HTMLElement): boolean {
   if (maximize) {
     maximize.addEventListener("click", () => {
       morphExpandedState(() => {
-        const next = !$npvLyricsExpanded.get();
+        const next = !isCardExpanded();
+        launchCollapsed = false;
         $npvLyricsExpanded.set(next);
         // Expanding a collapsed card opens + expands in one step.
         if (next && !$npvLyricsOpen.get()) $npvLyricsOpen.set(true);
         refreshCardUI();
+        // Releasing the launch override can leave both saved atoms unchanged.
+        scheduleEvaluate();
       });
     });
   }
@@ -437,12 +450,16 @@ function renderCardShell(npv: HTMLElement): boolean {
         ? morphExpandedState
         : animateStateChange;
       morph(() => {
-        const open = $npvLyricsOpen.get();
+        const open = isCardOpen();
         // Collapsing an expanded card exits expanded mode for good — reopening
         // shows the normal card again.
-        if (open && $npvLyricsExpanded.get()) $npvLyricsExpanded.set(false);
+        // The first explicit open chooses the normal card even if the saved
+        // pre-launch preference was expanded. Only user choices write stores.
+        launchCollapsed = false;
+        if (!open || $npvLyricsExpanded.get()) $npvLyricsExpanded.set(false);
         $npvLyricsOpen.set(!open);
         refreshCardUI();
+        scheduleEvaluate();
       });
     });
   }
@@ -646,6 +663,11 @@ function attachWatchers(): void {
 export function initNPVLyrics(): void {
   if (initialized) return;
   initialized = true;
+  launchCollapsed = isExperimentEnabled("lyricsOnDemand");
+  watcherMaid.Give($experiment("lyricsOnDemand").listen((enabled) => {
+    if (!enabled) launchCollapsed = false;
+    scheduleEvaluate();
+  }));
 
   for (const name of [
     "page:destroy",

@@ -41,6 +41,20 @@ export type Experiment = {
 
 export const EXPERIMENTS = [
   {
+    id: "lyricsOnDemand",
+    label: "Lyrics On Demand",
+    description:
+      "On the next Spotify launch, start with sidebar lyrics collapsed without changing your saved preference. Open them when wanted. Disable to immediately restore the remembered open and expanded state.",
+    default: true,
+  },
+  {
+    id: "pauseInactiveRendering",
+    label: "Pause Background Rendering",
+    description:
+      "Stop lyrics and background animation when Spotify is minimized, another app has focus, or the lyrics view is closed. PiP also pauses when it loses focus, even while visible. Resume when you return. Disable to restore continuous rendering.",
+    default: true,
+  },
+  {
     id: "newProgressBarStyling",
     label: "New SliderBar Styling",
     description:
@@ -95,7 +109,7 @@ export function setExperiment(id: ExperimentId, value: boolean): void {
 /** Sync every experiment's `pageClass` onto the page root. Safe to call anytime. */
 export function ApplyExperimentClasses(el: HTMLElement): void {
   for (const exp of EXPERIMENTS) {
-    if (!exp.pageClass) continue;
+    if (!("pageClass" in exp) || !exp.pageClass) continue;
     el.classList.toggle(exp.pageClass, isExperimentEnabled(exp.id));
   }
 }

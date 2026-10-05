@@ -43,7 +43,6 @@ import { ScrollingIntervalTime } from "./utils/Lyrics/lyrics.ts";
 import { ScrollToActiveLine } from "./utils/Scrolling/ScrollToActiveLine.ts";
 import { ScrollSimplebar } from "./utils/Scrolling/Simplebar/ScrollSimplebar.ts";
 import { $fromVersion, $lastFetchedUri, $previousVersion } from "./utils/uiState.ts";
-import { CheckForUpdates } from "./utils/version/CheckForUpdates.tsx";
 import { needsMigration, showMigrationModal } from "./utils/migration/DataMigration.tsx";
 import "./css/settings-panel.css";
 import "./components/ReactComponents/LyricsManager/styles.css";
@@ -51,7 +50,6 @@ import "./css/polyfills/generic-modal-polyfill.css";
 import "./css/NoticeDialog.css";
 import "./css/polyfills/sonner-polyfill.css";
 import "./css/NPVLyrics.css";
-import { showUpdatedDialog } from "./components/ReactComponents/UpdateDialog.tsx";
 import { IsPIP, OpenPopupLyrics, ClosePopupLyrics } from "./components/Utils/PopupLyrics.ts";
 import { GetNPVCardElement, GetNPVElement, GetNPVObserverRoot, initNPVLyrics } from "./components/Utils/NPVLyrics.ts";
 import ReactDOM from "react-dom/client";
@@ -65,7 +63,6 @@ import Logger from "./utils/Logger.ts";
 import Whentil from "./modules/Whentil.ts";
 import App from "./utils/app.ts";
 import { initSession } from "./utils/SessionManager/index.ts";
-import { jitter } from "./utils/jitter.ts";
 
 async function main() {
   const appLogger = new Logger("App");
@@ -491,13 +488,7 @@ async function main() {
       }
     );
 
-    // A fresh install has no previous version, and there is nothing to announce.
-    const fromVersion = $fromVersion.get();
-    const toVersion = $spicyLyricsVersion.get();
-    if (fromVersion && toVersion && fromVersion !== toVersion) {
-      showUpdatedDialog(fromVersion, toVersion);
-    }
-
+    // Manual fork releases describe their changes on the fork release page.
     $fromVersion.set($spicyLyricsVersion.get());
 
     {
@@ -1084,19 +1075,9 @@ async function main() {
         }
       });
 
-      // 2 minutes, jittered. The `finally` matters: CheckForUpdates reaches the
-      // network, and a single throw used to skip the reschedule entirely, which
-      // silently stopped update checks for the rest of the session.
-      const CheckForUpdates_Intervaled = async () => {
-        try {
-          await CheckForUpdates();
-        } catch (error) {
-          console.warn("Update check failed", error);
-        } finally {
-          setTimeout(CheckForUpdates_Intervaled, jitter(120 * 1000, 0.2));
-        }
-      };
-      setTimeout(async () => await CheckForUpdates_Intervaled(), 1000);
+      // This standalone fork is updated from its pinned GitHub releases, not by
+      // reloading the upstream Marketplace loader. No recurring update polling.
+
     }
   };
 

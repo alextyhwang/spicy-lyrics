@@ -60,6 +60,7 @@ import {
 import TransferElement from "../Utils/TransferElement.ts";
 import { IsPIP, _IsPIP_after, ClosePopupLyrics } from "../Utils/PopupLyrics.ts";
 import { NPVCardOwnsPage, DeRenderNPVCard } from "../Utils/NPVLyrics.ts";
+import { setAnimationFrameView } from "../../utils/AnimationFrameLoop.ts";
 import { CleanUpIsByCommunity } from "../../utils/Lyrics/Applyer/Credits/ApplyIsByCommunity.tsx";
 import { OpenLyricsDBPanel } from "../../utils/openLyricsDBPanel.tsx";
 import { openSettingsPanel } from "../../utils/settings.ts";
@@ -312,6 +313,7 @@ async function OpenPage(
   }
 
   pageRoot.appendChild(elem);
+  setAnimationFrameView(elem);
 
   addLinesEvListener();
 
@@ -420,6 +422,7 @@ async function DestroyPage() {
   if (!PageView.IsOpened) return;
   pageLogger.debug("Destroying page");
   PageView.IsOpened = false;
+  setAnimationFrameView(null);
 
   cleanupApplyLyricsAbortController();
 

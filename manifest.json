@@ -1,12 +1,21 @@
 [
   {
-    "name": "Spicy Lyrics",
-    "description": "Spicy Lyrics is a better lyrics experience (compared to Spotify Lyrics) for Spotify. It brings word-by-word lyrics (karaoke style), beautiful animations, and more. Come and give it a try!",
+    "name": "Spicy Lyrics \u2014 Performance",
+    "description": "On-demand lyrics with rendering paused while Spotify is inactive. Independent performance fork of Spicy Lyrics.",
     "preview": "./previews/V3latest_smallcard_preview.webp",
-    "main": "./builds/spicy-lyrics.mjs",
-    "readme": "README.md",
-    "branch": "main",
-    "authors": [{ "name": "Spikerko", "url": "https://github.com/Spikerko" }],
+    "main": "./builds/spicy-lyrics-performance.js",
+    "readme": "PERFORMANCE.md",
+    "branch": "performance",
+    "authors": [
+      {
+        "name": "Spikerko",
+        "url": "https://github.com/Spikerko"
+      },
+      {
+        "name": "Alex Hwang (performance fork)",
+        "url": "https://github.com/alextyhwang"
+      }
+    ],
     "tags": [
       "lyrics",
       "spicy-lyrics",

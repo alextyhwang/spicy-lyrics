@@ -185,3 +185,4 @@ api-backend/
 docs/
 
 perf/
+.DS_Store
