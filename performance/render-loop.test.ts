@@ -2,14 +2,17 @@ import { test, expect } from "bun:test";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
 
-function setup() {
+type ObserverMode = "available" | "missing" | "constructorThrows" | "observeThrows";
+
+function setup(observerMode: ObserverMode = "available") {
   const atom = (initial: any) => {
     let value = initial;
     const listeners = new Set<Function>();
     return { get: () => value, listen: (f: Function) => listeners.add(f),
       set: (v: any) => { value = v; listeners.forEach(f => f(v)); } };
   };
-  const makeHost = () => {
+  const intersectionObservers: any[] = [];
+  const makeHost = (mode: ObserverMode = "available") => {
     const host: any = new EventTarget();
     const queue = new Map<number, Function>(); let next = 0;
     host.requestAnimationFrame = (f: Function) => { queue.set(++next, f); return next; };
@@ -22,12 +25,33 @@ function setup() {
     doc.createElement = () => ({ textContent: "" });
     host.CSSAnimation = class CSSAnimation extends EventTarget {};
     host.CSSTransition = class CSSTransition extends EventTarget {};
+    if (mode !== "missing") host.IntersectionObserver = class {
+      connected = false; observeCalls = 0; disconnectCalls = 0; deliveries = 0;
+      target: any;
+      owner = host;
+      constructor(public callback: Function, public options: any) {
+        if (mode === "constructorThrows") throw new Error("constructor failed");
+        intersectionObservers.push(this);
+      }
+      observe(target: any) {
+        this.observeCalls++; this.target = target;
+        if (mode === "observeThrows") throw new Error("observe failed");
+        this.connected = true;
+      }
+      disconnect() { this.disconnectCalls++; this.connected = false; }
+      // Deliberately permit delivery after disconnect, as queued browser work can.
+      emit(intersecting: boolean, ratio = intersecting ? 1 : 0, target = this.target) {
+        this.deliveries++;
+        this.callback([{ target, isIntersecting: intersecting, intersectionRatio: ratio }]);
+      }
+    };
     return { host, doc, queue, tick: (t: number) => {
       const due = [...queue.values()]; queue.clear(); due.forEach(f => f(t));
     } };
   };
-  const main = makeHost();
-  const feature = atom(true), capEnabled = atom(false), cap = atom(60);
+  const main = makeHost(observerMode);
+  const feature = atom(true), offscreenFeature = atom(true), capEnabled = atom(false), cap = atom(60);
+  const experiments = {pauseInactiveRendering: feature, pauseOffscreenRendering: offscreenFeature};
   const observers: any[] = [];
   class MutationObserver {
     connected = false;
@@ -38,18 +62,25 @@ function setup() {
   const context: any = {window:main.host, document:main.doc, MutationObserver,
     console: { error: () => {} },
     $animationFpsCap:cap, $animationFpsCapEnabled:capEnabled,
-    $experiment:()=>feature, isExperimentEnabled:()=>feature.get()};
+    $experiment:(id: keyof typeof experiments)=>experiments[id],
+    isExperimentEnabled:(id: keyof typeof experiments)=>experiments[id].get()};
   const source = readFileSync(new URL('../src/utils/AnimationFrameLoop.ts', import.meta.url),'utf8')
     .replace(/^import .*;\n/gm,'').replace(/^export /gm,'');
   const js = new Bun.Transpiler({loader:'ts'}).transformSync(source);
   vm.runInNewContext(js+'\nglobalThis.api={setAnimationFrameView,onAnimationFrame,requestCappedFrame,cancelCappedFrame};',context);
   const root = (doc = main.doc, animations: any[] = []) => {
     const classes = new Set<string>();
-    const element: any = { ownerDocument: doc, isConnected: true,
+    const element: any = { ownerDocument: doc, isConnected: true, geometryReads: 0,
+      getBoundingClientRect: () => { element.geometryReads++; throw new Error("unexpected geometry read"); },
       contains: (target: any) => target === element || target.parent === element,
       getAnimations: () => animations,
       classList: { contains: (name: string) => classes.has(name),
         toggle: (name: string, on: boolean) => on ? classes.add(name) : classes.delete(name) } };
+    for (const name of ["offsetHeight", "offsetWidth", "clientHeight", "clientWidth"]) {
+      Object.defineProperty(element, name, {get: () => {
+        element.geometryReads++; throw new Error("unexpected geometry read");
+      }});
+    }
     for (const animation of animations) animation.effect = { target: element };
     return element;
   };
@@ -61,7 +92,8 @@ function setup() {
     a.cancel = function() { this.playState = "idle"; this.dispatchEvent(new Event("cancel")); };
     return a;
   };
-  return {main, makeHost, feature, capEnabled, cap, api:context.api, root, animation,
+  return {main, makeHost, feature, offscreenFeature, intersectionObservers,
+    capEnabled, cap, api:context.api, root, animation,
     status: main.host._spicy_lyrics_performance.status,
     mutate: () => observers.filter(o => o.connected).forEach(o => o.callback()), observers};
 }
@@ -272,4 +304,210 @@ test("a connected animation moved outside the root regains owner control on muta
   main.doc.focused = false; main.host.dispatchEvent(new Event("blur"));
   child.parent = null; mutate();
   expect(moving.playState).toBe("running"); expect(status().pausedAnimations).toBe(0);
+});
+
+test("offscreen clipping pauses owned RAF, CSS and WAAPI; reentry reads current playback once", () => {
+  const {main, api, root, animation, intersectionObservers, status, capEnabled} = setup();
+  const moving = animation(), ownerPaused = animation("paused");
+  const css = animation("running", main.host.CSSAnimation);
+  const element = root(main.doc, [moving, ownerPaused, css]);
+  let playback = 1000; const positions: number[] = []; const timestamps: number[] = [];
+  api.onAnimationFrame((t: number) => { positions.push(playback); timestamps.push(t); });
+  capEnabled.set(true); api.setAnimationFrameView(element); main.tick(0);
+  let oneShots = 0; api.requestCappedFrame(() => oneShots++);
+  const cancelledFrame = [...main.queue.values()][0];
+  const observer = intersectionObservers[0]; observer.emit(false);
+  expect(status().offscreen).toBe(true); expect(status().viewIntersecting).toBe(false);
+  expect(status().active).toBe(false); expect(main.queue.size).toBe(0);
+  expect(element.classList.contains(inactiveClass)).toBe(true);
+  expect(moving.playState).toBe("paused"); expect(css.pauses).toBe(0);
+  playback = 120000; cancelledFrame(120000); main.tick(120000);
+  expect(positions).toEqual([1000]); expect(oneShots).toBe(0);
+  observer.emit(true, 0.1);
+  expect(status().offscreen).toBe(false); expect(main.queue.size).toBe(1);
+  expect(moving.playState).toBe("running"); expect(ownerPaused.playState).toBe("paused");
+  expect(element.classList.contains(inactiveClass)).toBe(false); expect(css.plays).toBe(0);
+  main.tick(120001);
+  expect(positions).toEqual([1000, 120000]); expect(timestamps).toEqual([0, 120001]);
+  expect(oneShots).toBe(1); expect(main.queue.size).toBe(1);
+  main.tick(120002); expect(positions.length).toBe(2); // No catch-up burst.
+});
+
+test("initial zero intersection stops the optimistic loop until an entry reports reentry", () => {
+  const {main, api, root, intersectionObservers, status} = setup(); let calls = 0;
+  api.onAnimationFrame(() => calls++); api.setAnimationFrameView(root());
+  expect(status().viewIntersecting).toBe(null); expect(main.queue.size).toBe(1);
+  intersectionObservers[0].emit(false, 0);
+  expect(main.queue.size).toBe(0); main.tick(0); expect(calls).toBe(0);
+  intersectionObservers[0].emit(true); main.tick(100000);
+  expect(calls).toBe(1); expect(main.queue.size).toBe(1);
+});
+
+test("optimistic startup permits one-shot layout and a later-mounted root is event driven", () => {
+  const {main, api, root, intersectionObservers} = setup();
+  const element = root(); let initialized = false;
+  api.requestCappedFrame(() => { initialized = true; });
+  api.setAnimationFrameView(element); main.tick(0);
+  expect(initialized).toBe(true); expect(main.queue.size).toBe(0);
+  element.isConnected = false; api.setAnimationFrameView(element);
+  let later = 0; api.requestCappedFrame(() => later++);
+  intersectionObservers[0].emit(false); expect(main.queue.size).toBe(0);
+  element.isConnected = true; intersectionObservers[0].emit(true);
+  expect(main.queue.size).toBe(1); main.tick(100); expect(later).toBe(1);
+  expect(intersectionObservers.length).toBe(1);
+});
+
+test("any partial intersection stays active, including conservative threshold-zero edge contact", () => {
+  const {main, api, root, intersectionObservers, status} = setup();
+  const element = root(); api.onAnimationFrame(() => {}); api.setAnimationFrameView(element);
+  const observer = intersectionObservers[0];
+  expect(observer.target).toBe(element); expect(observer.options).toEqual({root: null, threshold: 0});
+  observer.emit(true, 0.001); expect(status().active).toBe(true); expect(main.queue.size).toBe(1);
+  observer.emit(true, 0); expect(status().active).toBe(true); expect(main.queue.size).toBe(1);
+  observer.emit(false, 0); expect(status().active).toBe(false); expect(main.queue.size).toBe(0);
+});
+
+test("same-root registration keeps offscreen state and adds no observers", () => {
+  const {main, api, root, intersectionObservers, observers, status} = setup();
+  const element = root(); api.onAnimationFrame(() => {}); api.setAnimationFrameView(element);
+  intersectionObservers[0].emit(false);
+  for (let i = 0; i < 20; i++) api.setAnimationFrameView(element);
+  expect(status().viewIntersecting).toBe(false); expect(main.queue.size).toBe(0);
+  expect(intersectionObservers.length).toBe(1); expect(intersectionObservers[0].observeCalls).toBe(1);
+  expect(observers.length).toBe(1);
+});
+
+test("replacement rejects queued entries from the old observer and entries for another target", () => {
+  const {main, api, root, intersectionObservers, status} = setup();
+  const old = root(), replacement = root();
+  api.onAnimationFrame(() => {}); api.setAnimationFrameView(old);
+  const observer = intersectionObservers[0]; observer.emit(false);
+  api.setAnimationFrameView(replacement);
+  expect(observer.disconnectCalls).toBe(1); expect(status().viewIntersecting).toBe(null);
+  observer.emit(false); expect(main.queue.size).toBe(1); expect(status().viewIntersecting).toBe(null);
+  const current = intersectionObservers[1]; current.emit(false);
+  observer.emit(true); expect(main.queue.size).toBe(0); expect(status().viewIntersecting).toBe(false);
+  current.emit(true, 1, old); expect(main.queue.size).toBe(0);
+  current.emit(true); expect(main.queue.size).toBe(1);
+});
+
+test("adoption invalidates old entries before rebinding and observes through the new owner", () => {
+  const {main, makeHost, api, root, intersectionObservers, status} = setup();
+  const element = root(), pip = makeHost(); api.onAnimationFrame(() => {});
+  api.setAnimationFrameView(element); const oldObserver = intersectionObservers[0];
+  element.ownerDocument = pip.doc;
+  oldObserver.emit(false); expect(status().viewIntersecting).toBe(null);
+  api.setAnimationFrameView(element);
+  expect(oldObserver.disconnectCalls).toBe(1); expect(main.queue.size).toBe(0);
+  expect(pip.queue.size).toBe(1); expect(intersectionObservers[1].owner).toBe(pip.host);
+  intersectionObservers[1].emit(false); expect(pip.queue.size).toBe(0);
+  oldObserver.emit(true); expect(status().viewIntersecting).toBe(false); expect(pip.queue.size).toBe(0);
+  intersectionObservers[1].emit(true); expect(pip.queue.size).toBe(1);
+  oldObserver.emit(false); expect(pip.queue.size).toBe(1);
+});
+
+test("close disconnects observers, restores animation ownership and clears old one-shots", () => {
+  const {main, api, root, animation, intersectionObservers, observers, status} = setup();
+  const moving = animation(); const element = root(main.doc, [moving]);
+  api.setAnimationFrameView(element); const observer = intersectionObservers[0]; observer.emit(false);
+  let staleWork = 0; api.requestCappedFrame(() => staleWork++); api.setAnimationFrameView(null);
+  expect(observer.connected).toBe(false); expect(observer.disconnectCalls).toBe(1);
+  expect(observers[0].connected).toBe(false); expect(status().viewIntersecting).toBe(null);
+  expect(status().offscreenObserverAttached).toBe(false);
+  expect(moving.playState).toBe("running"); expect(element.classList.contains(inactiveClass)).toBe(false);
+  observer.emit(true); main.host.dispatchEvent(new Event("focus")); expect(main.queue.size).toBe(0);
+  api.setAnimationFrameView(root()); main.tick(1000); expect(staleWork).toBe(0);
+});
+
+test("PiP has its own intersection constructor even when the main window lacks it", () => {
+  const {main, makeHost, api, root, intersectionObservers, status} = setup("missing");
+  const pip = makeHost(); main.doc.visibilityState = "hidden";
+  api.onAnimationFrame(() => {}); api.setAnimationFrameView(root(pip.doc));
+  expect(intersectionObservers.length).toBe(1); expect(intersectionObservers[0].owner).toBe(pip.host);
+  expect(status().offscreenObserverAttached).toBe(true);
+  intersectionObservers[0].emit(false); expect(pip.queue.size).toBe(0);
+  intersectionObservers[0].emit(true); expect(pip.queue.size).toBe(1); expect(main.queue.size).toBe(0);
+});
+
+test("offscreen opt-out restores rendering but retains focus gating, with no duplicate RAF", () => {
+  const {main, api, root, animation, intersectionObservers, offscreenFeature, status} = setup();
+  const moving = animation(); const element = root(main.doc, [moving]);
+  api.onAnimationFrame(() => {}); api.setAnimationFrameView(element);
+  const old = intersectionObservers[0]; old.emit(false); offscreenFeature.set(false);
+  expect(main.queue.size).toBe(1); expect(moving.playState).toBe("running");
+  expect(element.classList.contains(inactiveClass)).toBe(false); expect(old.connected).toBe(false);
+  expect(status().offscreenPauseEnabled).toBe(false); expect(status().viewIntersecting).toBe(null);
+  old.emit(false); expect(main.queue.size).toBe(1);
+  main.doc.focused = false; main.host.dispatchEvent(new Event("blur")); expect(main.queue.size).toBe(0);
+  main.doc.focused = true; main.host.dispatchEvent(new Event("focus")); expect(main.queue.size).toBe(1);
+  offscreenFeature.set(true); expect(main.queue.size).toBe(1);
+  intersectionObservers[1].emit(false); expect(main.queue.size).toBe(0);
+  for (let i = 0; i < 5; i++) {
+    offscreenFeature.set(false); expect(main.queue.size).toBe(1);
+    offscreenFeature.set(true); expect(main.queue.size).toBe(1);
+    intersectionObservers.at(-1).emit(false); expect(main.queue.size).toBe(0);
+  }
+  expect(intersectionObservers.filter(o => o.connected).length).toBe(1);
+});
+
+test("original background opt-out bypasses offscreen, visibility, pagehide and closed-view gates", () => {
+  const {main, api, root, feature, offscreenFeature, intersectionObservers, status} = setup();
+  api.onAnimationFrame(() => {}); const element = root(); api.setAnimationFrameView(element);
+  const observer = intersectionObservers[0]; observer.emit(false);
+  main.doc.focused = false; main.doc.visibilityState = "hidden";
+  main.host.dispatchEvent(new Event("pagehide")); feature.set(false);
+  expect(main.queue.size).toBe(1); expect(status().offscreenPauseEnabled).toBe(false);
+  observer.emit(false); offscreenFeature.set(false); offscreenFeature.set(true);
+  expect(main.queue.size).toBe(1); expect(intersectionObservers.length).toBe(1);
+  api.setAnimationFrameView(null); expect(main.queue.size).toBe(1);
+  feature.set(true); expect(main.queue.size).toBe(0);
+});
+
+for (const mode of ["missing", "constructorThrows", "observeThrows"] as const) {
+  test(`intersection observer ${mode} fails open without retrying each frame`, () => {
+    const {main, api, root, intersectionObservers, status} = setup(mode);
+    const element = root(); let frames = 0;
+    api.onAnimationFrame(() => frames++); api.setAnimationFrameView(element);
+    expect(status().viewIntersecting).toBe(null); expect(status().offscreenObserverAttached).toBe(false);
+    for (let i = 0; i < 120; i++) { main.tick(i * 17); expect(main.queue.size).toBe(1); }
+    expect(frames).toBe(120); expect(element.geometryReads).toBe(0);
+    expect(intersectionObservers.length).toBe(mode === "observeThrows" ? 1 : 0);
+    if (mode === "observeThrows") {
+      expect(intersectionObservers[0].disconnectCalls).toBe(1);
+      intersectionObservers[0].emit(false); expect(status().viewIntersecting).toBe(null);
+    }
+    main.doc.focused = false; main.host.dispatchEvent(new Event("blur")); expect(main.queue.size).toBe(0);
+  });
+}
+
+test("frames and focus events do no intersection observation or geometry work", () => {
+  const {main, api, root, intersectionObservers} = setup(); const element = root();
+  let calls = 0; api.onAnimationFrame(() => calls++); api.setAnimationFrameView(element);
+  const observer = intersectionObservers[0]; observer.emit(true);
+  for (let i = 0; i < 120; i++) main.tick(i * 17);
+  for (let i = 0; i < 10; i++) {
+    main.doc.focused = false; main.host.dispatchEvent(new Event("blur"));
+    main.doc.focused = true; main.host.dispatchEvent(new Event("focus"));
+  }
+  expect(calls).toBe(120); expect(main.queue.size).toBe(1);
+  expect(element.geometryReads).toBe(0); expect(intersectionObservers.length).toBe(1);
+  expect(observer.observeCalls).toBe(1); expect(observer.deliveries).toBe(1);
+  observer.emit(false);
+  for (let i = 0; i < 120; i++) main.tick(5000 + i * 17);
+  expect(calls).toBe(120); expect(main.queue.size).toBe(0);
+  expect(observer.observeCalls).toBe(1); expect(observer.deliveries).toBe(2);
+  expect(element.geometryReads).toBe(0);
+});
+
+test("offscreen async animation arrivals honor owner pauses through reentry", () => {
+  const {main, api, root, animation, intersectionObservers, mutate, status} = setup();
+  const animations: any[] = []; const element = root(main.doc, animations);
+  api.setAnimationFrameView(element); intersectionObservers[0].emit(false);
+  const later = animation(), deliberate = animation();
+  for (const a of [later, deliberate]) { a.effect = {target: element}; animations.push(a); }
+  mutate(); expect(later.playState).toBe("paused"); expect(status().pausedAnimations).toBe(2);
+  deliberate.pause(); expect(status().pausedAnimations).toBe(1);
+  intersectionObservers[0].emit(true);
+  expect(later.playState).toBe("running"); expect(deliberate.playState).toBe("paused");
+  expect(status().pausedAnimations).toBe(0);
 });

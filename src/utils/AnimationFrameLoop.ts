@@ -75,6 +75,53 @@ const INACTIVE_CLASS = "SpicyLyrics_RenderingInactive";
 const styledDocuments = new WeakSet<Document>();
 let viewDocument: Document | null = null;
 let pageHidden = false;
+let intersectionObserver: IntersectionObserver | null = null;
+let intersectionGeneration = 0;
+// Optimistic until the first real entry: async mounts and one-shot setup must
+// be allowed to give the root its initial layout. No geometry reads or polling.
+let viewIntersecting: boolean | null = null;
+
+// Preserve the original experiment's full continuous-rendering opt-out.
+const pausesOffscreen = (): boolean =>
+  isExperimentEnabled("pauseInactiveRendering") && isExperimentEnabled("pauseOffscreenRendering");
+
+function resetIntersectionObserver(): void {
+  // disconnect() does not invalidate already queued callbacks.
+  intersectionGeneration++;
+  intersectionObserver?.disconnect();
+  intersectionObserver = null;
+  viewIntersecting = null;
+}
+
+function observeViewIntersection(): void {
+  if (!view || !pausesOffscreen()) return;
+  const element = view;
+  const doc = element.ownerDocument;
+  // PiP must observe the viewport/clipping ancestors in its own realm.
+  const Observer = (doc.defaultView as (Window & typeof globalThis) | null)?.IntersectionObserver;
+  if (typeof Observer !== "function") return; // Fail open in older hosts.
+  const generation = intersectionGeneration;
+  try {
+    intersectionObserver = new Observer((entries) => {
+      if (generation !== intersectionGeneration || view !== element || viewDocument !== doc ||
+          element.ownerDocument !== doc) return;
+      let intersecting = viewIntersecting;
+      for (const entry of entries) {
+        if (entry.target === element) intersecting = entry.isIntersecting;
+      }
+      if (intersecting === viewIntersecting) return;
+      // A partial intersection suffices. Native IO applies ancestor clipping;
+      // it does not detect another app covering Spotify. Edge contact remains
+      // active so a threshold-0 notification cannot strand the view at an edge.
+      viewIntersecting = intersecting;
+      syncFrameLoop();
+    }, { root: null, threshold: 0 });
+    intersectionObserver.observe(element);
+  } catch (err) {
+    resetIntersectionObserver();
+    console.error("Spicy Lyrics: intersection observation failed", err);
+  }
+}
 
 type PausedAnimation = {
   release: () => void;
@@ -91,7 +138,8 @@ export const isAnimationDocumentActive = (doc: Document): boolean =>
 
 const isActive = (): boolean => {
   if (!isExperimentEnabled("pauseInactiveRendering")) return true;
-  return !!view?.isConnected && !pageHidden && isAnimationDocumentActive(view.ownerDocument);
+  return !!view?.isConnected && !pageHidden && isAnimationDocumentActive(view.ownerDocument) &&
+    (!pausesOffscreen() || viewIntersecting !== false);
 };
 
 function ensureInactiveStyle(doc: Document): void {
@@ -248,6 +296,7 @@ export function setAnimationFrameView(element: HTMLElement | null): void {
   frame = null;
   removeViewListeners?.();
   removeViewListeners = null;
+  resetIntersectionObserver();
   // Restore retained/adopted live objects before moving ownership. Detached,
   // cancelled and finished objects are simply forgotten.
   releaseAnimations(true);
@@ -282,6 +331,7 @@ export function setAnimationFrameView(element: HTMLElement | null): void {
       host.removeEventListener("pageshow", onPageShow);
       observer.disconnect();
     };
+    observeViewIntersection();
   } else {
     // One-shot work belonged to the view being destroyed, not its replacement.
     pending.clear();
@@ -289,17 +339,27 @@ export function setAnimationFrameView(element: HTMLElement | null): void {
   syncFrameLoop();
 }
 
-$experiment("pauseInactiveRendering").listen(syncFrameLoop);
+const updateRenderingExperiments = () => {
+  resetIntersectionObserver();
+  observeViewIntersection();
+  syncFrameLoop();
+};
+$experiment("pauseInactiveRendering").listen(updateRenderingExperiments);
+$experiment("pauseOffscreenRendering").listen(updateRenderingExperiments);
 
 // Read-only diagnostics for checking that background rendering really stops.
 Object.defineProperty(window, "_spicy_lyrics_performance", {
   configurable: true,
   value: {
     status: () => ({
-      version: "1.1.0",
+      version: "1.2.0",
       active: isActive(),
       scheduled: frame !== null,
       viewOpen: !!view?.isConnected,
+      offscreenPauseEnabled: pausesOffscreen(),
+      offscreenObserverAttached: intersectionObserver !== null,
+      viewIntersecting,
+      offscreen: viewIntersecting === false,
       renderedFrames,
       pausedAnimations: pausedAnimations.size,
     }),

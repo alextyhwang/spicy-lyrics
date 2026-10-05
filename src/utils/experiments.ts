@@ -51,7 +51,14 @@ export const EXPERIMENTS = [
     id: "pauseInactiveRendering",
     label: "Pause Background Rendering",
     description:
-      "Stop lyrics and background animation when Spotify is minimized, another app has focus, or the lyrics view is closed. PiP also pauses when it loses focus, even while visible. Resume when you return. Disable to restore continuous rendering.",
+      "Stop lyrics and background animation when Spotify is minimized, another app has focus, or the lyrics view is closed. PiP also pauses when it loses focus, even while visible. Resume when you return. Disable to restore continuous rendering, also bypassing Pause Offscreen Rendering.",
+    default: true,
+  },
+  {
+    id: "pauseOffscreenRendering",
+    label: "Pause Offscreen Rendering",
+    description:
+      "Pause lyrics and background animation when the lyrics view is fully outside the viewport or clipped by a scrolling container. Resume when any part returns. Requires Pause Background Rendering. Disable to keep rendering offscreen; focus and visibility pauses still apply. Does not detect another app covering Spotify.",
     default: true,
   },
   {

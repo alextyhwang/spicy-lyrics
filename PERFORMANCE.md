@@ -4,8 +4,9 @@ An independent fork of [Spikerko/spicy-lyrics](https://github.com/Spikerko/spicy
 
 - Sidebar lyrics start collapsed. Open them with the existing sidebar control or Spicy Lyrics playbar button.
 - The owned lyric frame loop and visual animations pause when its document is hidden or loses focus, and resume against current playback position when focused again. A visible Picture-in-Picture view also follows its own focus, so it pauses while another app has keyboard focus. Focus is not an exact occlusion detector.
+- Offscreen lyrics pause when scrolling or ancestor clipping puts the actual view outside its document viewport. An owner-document IntersectionObserver detects changes without polling or per-frame layout reads. Scrolling back into view resumes rendering at current playback. This does not detect another app covering Spotify.
 - The optional `spotify-background-performance.js` companion pauses other main-window CSS/WAAPI animations. CSS remains in control of CSS keyframes and transitions. Media, timers and Spotify's global RAF API are untouched.
-- **Lyrics On Demand** and **Pause Background Rendering** experiments provide opt-outs; the companion has a profile-menu switch.
+- **Lyrics On Demand**, **Pause Background Rendering**, and **Pause Offscreen Rendering** experiments provide opt-outs; the companion has a profile-menu switch.
 - Optional **Glass Lite** supplies minimal macOS-inspired static styling. No theme JavaScript, blur, refraction, remote fonts, animated backgrounds or extra rendering loops.
 
 The companion excludes fork-owned lyric animations from JavaScript ownership. Generic non-lyric document transfers are reconciled at the next focus/visibility/settings or animation-creation event; no transfer poller is added. Ordinary instance `animation.pause()` is respected, but saved native/prototype calls cannot signal ownership.
@@ -14,7 +15,7 @@ Spotify remains a Chromium app. The theme approximates a glass appearance; it do
 
 ## Installation from the fork release
 
-Download the assets from [performance-v1.1.0](https://github.com/alextyhwang/spicy-lyrics/releases/tag/performance-v1.1.0) into a fresh directory. Verify the SHA-256 checksums, then copy the two JavaScript files into Spicetify's Extensions directory. Disable the original Marketplace **Spicy Lyrics** and **Beautiful Lyrics** entries first; avoid running multiple lyrics renderers simultaneously.
+Download the assets from [performance-v1.2.0](https://github.com/alextyhwang/spicy-lyrics/releases/tag/performance-v1.2.0) into a fresh directory. Quit Spotify before applying changes. Verify the SHA-256 checksums, then copy the two JavaScript files into Spicetify's Extensions directory. Disable the original Marketplace **Spicy Lyrics** and **Beautiful Lyrics** entries first; avoid running multiple lyrics renderers simultaneously.
 
 ```sh
 shasum -a 256 -c SHA256SUMS
@@ -25,7 +26,13 @@ spicetify config extensions spotify-background-performance.js
 spicetify apply
 ```
 
+Reopen Spotify after applying the changes.
+
 For the optional theme, extract `GlassLite.zip` into `~/.config/spicetify/Themes/` and follow [its instructions](performance/GlassLite/README.md). The theme adds no JavaScript; the animation companion is independent of its appearance.
+
+## Music-only Spotify setup
+
+See [MUSIC-ONLY.md](performance/MUSIC-ONLY.md) for disabling Canvas and automatic Now Playing panel opening in Spotify’s native settings. Those preferences belong to Spotify and persist independently of this extension; the fork does not repeatedly force them. You can still open the panel manually or use the existing Spicy Lyrics playbar button for the full lyric page.
 
 ## Build and verify
 
